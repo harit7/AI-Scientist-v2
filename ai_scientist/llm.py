@@ -282,7 +282,7 @@ def get_response_from_llm(
     if msg_history is None:
         msg_history = []
 
-    if "claude" in model:
+    if "claude" in model and not model.startswith("claudecli-"):
         new_msg_history = msg_history + [
             {
                 "role": "user",
