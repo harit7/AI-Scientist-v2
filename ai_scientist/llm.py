@@ -70,6 +70,11 @@ AVAILABLE_LLMS = [
     "ollama/deepseek-r1:32b",
     "ollama/deepseek-r1:70b",
     "ollama/deepseek-r1:671b",
+    # llm_runtimes backends (see llm_runtimes/README.md)
+    "claudecli-sonnet",
+    "claudecli-opus",
+    "claudecli-haiku",
+    "local-qwen",
 ]
 
 
@@ -98,7 +103,7 @@ def get_batch_responses_from_llm(
     if msg_history is None:
         msg_history = []
 
-    if model.startswith("ollama/"):
+    if model.startswith(("ollama/", "claudecli-", "local-")):
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model.replace("ollama/", ""),
@@ -214,7 +219,7 @@ def get_batch_responses_from_llm(
 
 @track_token_usage
 def make_llm_call(client, model, temperature, system_message, prompt):
-    if model.startswith("ollama/"):
+    if model.startswith(("ollama/", "claudecli-", "local-")):
         return client.chat.completions.create(
             model=model.replace("ollama/", ""),
             messages=[
@@ -309,7 +314,7 @@ def get_response_from_llm(
                 ],
             }
         ]
-    elif model.startswith("ollama/"):
+    elif model.startswith(("ollama/", "claudecli-", "local-")):
         new_msg_history = msg_history + [{"role": "user", "content": msg}]
         response = client.chat.completions.create(
             model=model.replace("ollama/", ""),
@@ -478,7 +483,15 @@ def extract_json_between_markers(llm_output: str) -> dict | None:
 
 
 def create_client(model) -> tuple[Any, str]:
-    if model.startswith("claude-"):
+    if model.startswith(("claudecli-", "local-")):
+        from llm_runtimes import ensure_server
+
+        print(f"Using llm_runtimes backend with model {model}.")
+        return openai.OpenAI(
+            api_key="llm-runtimes",
+            base_url=ensure_server(),
+        ), model
+    elif model.startswith("claude-"):
         print(f"Using Anthropic API with model {model}.")
         return anthropic.Anthropic(), model
     elif model.startswith("bedrock") and "claude" in model:
@@ -489,7 +502,7 @@ def create_client(model) -> tuple[Any, str]:
         client_model = model.split("/")[-1]
         print(f"Using Vertex AI with model {client_model}.")
         return anthropic.AnthropicVertex(), client_model
-    elif model.startswith("ollama/"):
+    elif model.startswith(("ollama/", "claudecli-", "local-")):
         print(f"Using Ollama with model {model}.")
         return openai.OpenAI(
             api_key=os.environ.get("OLLAMA_API_KEY", ""),

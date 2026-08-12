@@ -18,7 +18,15 @@ OPENAI_TIMEOUT_EXCEPTIONS = (
 )
 
 def get_ai_client(model: str, max_retries=2) -> openai.OpenAI:
-    if model.startswith("ollama/"):
+    if model and model.startswith(("claudecli-", "local-")):
+        from llm_runtimes import ensure_server
+
+        client = openai.OpenAI(
+            base_url=ensure_server(),
+            api_key="llm-runtimes",
+            max_retries=max_retries,
+        )
+    elif model.startswith("ollama/"):
         client = openai.OpenAI(
             base_url="http://localhost:11434/v1", 
             max_retries=max_retries
