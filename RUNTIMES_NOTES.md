@@ -11,9 +11,9 @@ via the local `claude -p` CLI, subscription auth, no API key) and `local-qwen`
   `ollama/` dispatch conditions extended to also match `claudecli-`/`local-`;
   the `"claude" in model` Anthropic branch now excludes `claudecli-`; new model
   names appended to `AVAILABLE_LLMS`.
-- `ai_scientist/vlm.py` — same routing so VLM feedback stages don't crash;
-  NOTE: image content is dropped for `claudecli-*` (text-only degradation),
-  so plot-based feedback is weaker than with a true VLM.
+- `ai_scientist/vlm.py` — same routing for VLM feedback stages. The claude
+  CLI backend has real vision support: image parts are written to temp files
+  and claude -p reads them with a Read-only tool allowance.
 - `ai_scientist/treesearch/backend/backend_openai.py` — `get_ai_client` routes
   the new prefixes to the runtime server (tree-search experiment coding path).
 - `ai_scientist/tools/semantic_scholar.py` — bounded backoff (max 90s) and a
@@ -55,5 +55,4 @@ importable. Usual API models work exactly as upstream documents.
 ## Limitations
 
 - `claude -p` ignores `temperature`; token usage is reported as zero.
-- VLM feedback is text-only under `claudecli-*`.
 - Semantic Scholar without a key degrades to "proceed without literature".
