@@ -48,3 +48,9 @@ agent:
     max_debug_depth: 3
     debug_prob: 0.5
     num_drafts: 3
+  summary:
+    model: claudecli-haiku
+    temp: 0.3
+  select_node:
+    model: claudecli-haiku
+    temp: 0.3
