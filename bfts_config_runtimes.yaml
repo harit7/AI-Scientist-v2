@@ -1,0 +1,50 @@
+data_dir: data
+preprocess_data: false
+goal: null
+eval: null
+log_dir: logs
+workspace_dir: workspaces
+copy_data: true
+exp_name: run
+exec:
+  timeout: 1800
+  agent_file_name: runfile.py
+  format_tb_ipython: false
+generate_report: true
+report:
+  model: claudecli-sonnet
+  temp: 1.0
+experiment:
+  num_syn_datasets: 1
+debug:
+  stage4: false
+agent:
+  type: parallel
+  num_workers: 2
+  stages:
+    stage1_max_iters: 8
+    stage2_max_iters: 5
+    stage3_max_iters: 5
+    stage4_max_iters: 6
+  steps: 5
+  k_fold_validation: 1
+  multi_seed_eval:
+    num_seeds: 2
+  expose_prediction: false
+  data_preview: false
+  code:
+    model: claudecli-sonnet
+    temp: 1.0
+    max_tokens: 12000
+  feedback:
+    model: claudecli-haiku
+    temp: 0.5
+    max_tokens: 8192
+  vlm_feedback:
+    model: claudecli-haiku
+    temp: 0.5
+    max_tokens: null
+  search:
+    max_debug_depth: 3
+    debug_prob: 0.5
+    num_drafts: 3

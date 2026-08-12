@@ -51,7 +51,7 @@ def encode_image_to_base64(image_path: str) -> str:
 
 @track_token_usage
 def make_llm_call(client, model, temperature, system_message, prompt):
-    if model.startswith("ollama/"):
+    if model.startswith(("ollama/", "claudecli-", "local-")):
         return client.chat.completions.create(
             model=model.replace("ollama/", ""),
             messages=[
@@ -94,7 +94,7 @@ def make_llm_call(client, model, temperature, system_message, prompt):
 
 @track_token_usage
 def make_vlm_call(client, model, temperature, system_message, prompt):
-    if model.startswith("ollama/"):
+    if model.startswith(("ollama/", "claudecli-", "local-")):
         return client.chat.completions.create(
             model=model.replace("ollama/", ""),
             messages=[
@@ -203,6 +203,14 @@ def create_client(model: str) -> tuple[Any, str]:
     ]:
         print(f"Using OpenAI API with model {model}.")
         return openai.OpenAI(), model
+    elif model.startswith(("claudecli-", "local-")):
+        from llm_runtimes import ensure_server
+
+        print(f"Using llm_runtimes backend with model {model} (text-only degradation for VLM calls).")
+        return openai.OpenAI(
+            api_key="llm-runtimes",
+            base_url=ensure_server(),
+        ), model
     elif model.startswith("ollama/"):
         print(f"Using Ollama API with model {model}.")
         return openai.OpenAI(
@@ -301,7 +309,7 @@ def get_batch_responses_from_vlm(
         # Construct message with all images
         new_msg_history = msg_history + [{"role": "user", "content": content}]
 
-        if model.startswith("ollama/"):
+        if model.startswith(("ollama/", "claudecli-", "local-")):
             response = client.chat.completions.create(
                 model=model.replace("ollama/", ""),
                 messages=[
