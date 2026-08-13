@@ -1,0 +1,250 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2025,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{booktabs}
+
+% For theorems and such
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+
+% Custom
+\usepackage{multirow}
+\usepackage{color}
+\usepackage{colortbl}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{xspace}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\graphicspath{{../figures/}} % To reference your generated figures, name the PNGs directly. DO NOT CHANGE THIS.
+
+\begin{filecontents}{references.bib}
+@book{goodfellow2016deep,
+  title={Deep learning},
+  author={Goodfellow, Ian and Bengio, Yoshua and Courville, Aaron and Bengio, Yoshua},
+  volume={1},
+  year={2016},
+  publisher={MIT Press}
+}
+
+
+% On Calibration of Modern Neural Networks (Guo et al., 2017) is the foundational paper introducing temperature scaling as a post-hoc calibration method for neural networks. This paper is essential for the compression calibration study as it establishes the core technique (temperature scaling) that is evaluated throughout as a post-hoc correction for compression-induced miscalibration. Should be cited in the methods section when describing the temperature refitting procedure and in the related work when discussing calibration correction techniques.
+@article{guo2017onco,
+ author = {Chuan Guo and Geoff Pleiss and Yu Sun and Kilian Q. Weinberger},
+ booktitle = {International Conference on Machine Learning},
+ journal = {ArXiv},
+ title = {On Calibration of Modern Neural Networks},
+ volume = {abs/1706.04599},
+ year = {2017}
+}
+
+% Jacob et al., 2018 is the foundational paper on post-training quantization (PTQ) for efficient inference. Since the experiment applies uniform quantization at int8, int4, and int2 bit-widths (a core compression technique alongside pruning), this paper should be cited in the methods section to establish the quantization methodology. It also provides the motivation for studying calibration under quantization in the context of on-device deployment, and should appear in the introduction when discussing why efficient inference requires both compression and reliable confidence estimates.
+@article{jacob2017quantizationat,
+ author = {Benoit Jacob and S. Kligys and Bo Chen and Menglong Zhu and Matthew Tang and Andrew G. Howard and Hartwig Adam and Dmitry Kalenichenko},
+ booktitle = {2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+ journal = {2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+ pages = {2704-2713},
+ title = {Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference},
+ year = {2017}
+}
+
+% Deep Compression: Compressing Deep Neural Network with Pruning, Trained Quantization and Huffman Coding (Han et al., 2016) is the canonical foundational paper on neural network pruning and combined pruning-quantization strategies. This paper should be cited in the methods section when describing the unstructured magnitude pruning procedure applied across 30-90% sparsity levels in the experiments. It is also essential for the related work section on model compression and efficient inference, providing the methodological foundation for why pruning is expected to affect calibration. The paper is directly relevant because the experiments use magnitude-based pruning (a core technique from Deep Compression) as one of the two primary compression modalities tested alongside quantization.
+@article{han2015deepcc,
+ author = {Song Han and Huizi Mao and W. Dally},
+ booktitle = {International Conference on Learning Representations},
+ journal = {arXiv: Computer Vision and Pattern Recognition},
+ title = {Deep Compression: Compressing Deep Neural Network with Pruning, Trained Quantization and Huffman Coding},
+ year = {2015}
+}
+\end{filecontents}
+
+\title{
+Does Compression Break Calibration? A Controlled Study of Quantization and Pruning Effects on Confidence Reliability in Tiny Networks
+}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Anonymous}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+%\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Efficient on-device inference relies on compressing already-small models via quantization and pruning, but little is known about how these operations affect the reliability of predicted confidences, as distinct from accuracy. We hypothesized that quantization and pruning of tiny networks induce a calibration drift that is roughly predictable from a scalar compression ratio, and that this drift can be corrected almost for free by refitting a single temperature scalar on a small held-out set after compression. We test this on tiny MLPs and CNNs trained on MNIST, FashionMNIST, and Adult Census Income, applying post-training quantization (2/4/8-bit weights) crossed with unstructured magnitude pruning (30--95\% sparsity) in a joint 24-point grid, and validate the pipeline on a preliminary sklearn-Digits study. The clean picture largely does not hold: compression does increase expected calibration error (ECE) in the aggregate, but the drift is non-monotonic and architecture/dataset-dependent -- vision models are hurt most by \emph{moderate} joint compression and recover at extreme sparsity, while the tabular model is hurt most by \emph{extreme} pruning regardless of bit-width. A single post-compression temperature refit is a useful and nearly free correction, but on average restores only 45--53\% of the compression-induced calibration damage across the grid (mean calibration recovery ratio 0.45--0.53), not the near-complete recovery the pilot study suggested. Furthermore, regressing the optimal post-compression temperature on a simple compression-ratio scalar yields $R^2 \approx 0.08$--$0.09$ across all three datasets, ruling out the hoped-for validation-set-free temperature prediction recipe. We report these results, including the discrepancy between the encouraging pilot and the more heterogeneous full study, as a cautionary, controlled map of calibration cost under compression rather than a plug-and-play fix.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+Tiny neural networks deployed on edge devices are routinely compressed via post-training quantization and pruning to meet memory and latency budgets \citep{jacob2017quantizationat,han2015deepcc}. Accuracy loss from compression is well studied, but many downstream uses of these models -- selective prediction, active learning triage, human-in-the-loop escalation -- depend on the reliability of the model's \emph{confidence}, not just its top-1 label. If compression silently degrades calibration while accuracy looks acceptable, a deployed system can become overconfident exactly where compression introduced new errors, with no accuracy-based signal to detect it.
+
+We set out to answer two practical questions: (1) does compressing a tiny, already well-calibrated classifier reliably push it toward miscalibration, and is that drift predictable from how aggressively the model was compressed; and (2) can a single, near-zero-cost post-hoc temperature refit \citep{guo2017onco} restore calibration after compression, decoupling the ``calibration cost'' of compression from its unavoidable accuracy cost? A cheap, reliable answer to (2) would give practitioners a nearly free recipe for deploying compressed tiny models with trustworthy confidences.
+
+Our contribution is a controlled empirical study across three datasets (MNIST, FashionMNIST, Adult Census Income) and a 24-point joint quantization$\times$pruning grid, preceded by a smaller single-axis pilot on sklearn Digits. The results are decidedly ICBINB: the pilot study looked clean and monotonic, but the larger, jointly-varying study reveals (i) non-monotonic, dataset-dependent calibration drift -- vision models are worst at \emph{moderate} compression and vision-specific, while the tabular model is worst under \emph{extreme pruning} specifically; (ii) temperature refit is genuinely useful but only recovers about half of the induced miscalibration on average, not the near-complete fix the pilot suggested; and (iii) the hoped-for ``predict temperature from compression ratio alone'' recipe fails outright ($R^2 \approx 0.08$). We view this as a useful negative result: post-hoc temperature refit remains a sensible default after compressing a tiny model, but it should not be trusted as a guaranteed or fully-automatic fix, and its effectiveness must be checked per model/architecture rather than assumed from a compression ratio.
+
+\section{Related Work}
+\label{sec:related}
+Temperature scaling \citep{guo2017onco} is the standard cheap post-hoc calibration method for neural networks and is the correction mechanism we evaluate throughout; prior calibration studies of small models typically examine temperature scaling, label smoothing, and ensembling in isolation from any model compression step. Model compression itself is well studied on the accuracy axis: post-training quantization for efficient integer-only inference \citep{jacob2017quantizationat} and combined pruning/quantization pipelines such as Deep Compression \citep{han2015deepcc} both target inference cost and accuracy retention, without examining confidence reliability of the resulting compressed model. A separate strand of the large-language-model quantization literature studies how the \emph{calibration data} used inside a post-training quantization algorithm affects downstream task accuracy -- an algorithm-facing notion of ``calibration'' unrelated to confidence reliability, and one we do not address. To our knowledge, no prior controlled small-scale study measures ECE as a joint function of quantization bit-width and pruning sparsity in tiny classifiers, nor tests whether a single post-compression temperature refit suffices to correct any induced miscalibration; our study fills this specific gap, and shows that the answer is more complicated than either body of prior work would suggest in isolation.
+
+\section{Background}
+\label{sec:background}
+\textbf{Calibration metrics.} We use 15-bin expected calibration error (ECE), which bins predictions by predicted-class confidence and averages the absolute gap between bin confidence and bin accuracy, and the multiclass Brier score, the mean squared distance between predicted probabilities and one-hot labels. \textbf{Temperature scaling} \citep{guo2017onco} rescales logits $z$ by a single learned scalar $T>0$, $p = \mathrm{softmax}(z/T)$, fit by minimizing negative log-likelihood on a held-out split; it changes confidence sharpness without altering the ranking of predictions or accuracy. \textbf{Compression.} Post-training quantization discretizes weights to a fixed bit-width via min-max uniform quantization \citep{jacob2017quantizationat}; unstructured magnitude pruning zeros the smallest-magnitude weights up to a target sparsity, following the pruning component of Deep Compression \citep{han2015deepcc}. Neither operation involves retraining, matching the ``nearly free'' deployment setting we study.
+
+\section{Method}
+\label{sec:method}
+For each trained baseline model we construct compressed copies by (a) per-tensor symmetric uniform weight quantization at $\{2,4,8\}$ bits (32-bit float as the uncompressed reference), and (b) one-shot unstructured magnitude pruning at sparsity $\{0,0.3,0.5,0.7,0.9,0.95\}$, applied jointly ($4\times6=24$ configurations per dataset, no fine-tuning). For every configuration we measure test accuracy, 15-bin ECE, and Brier score \emph{before} recalibration, then refit a single temperature scalar by LBFGS on a 500--1000 example held-out calibration split and remeasure ECE/Brier/accuracy \emph{after} refit. We summarize correction effectiveness with a \textbf{calibration recovery ratio}, $\mathrm{CRR} = \frac{\mathrm{ECE}_{\text{before}} - \mathrm{ECE}_{\text{after}}}{\mathrm{ECE}_{\text{before}} - \mathrm{ECE}_{\text{orig-refit}}}$, where $\mathrm{ECE}_{\text{orig-refit}}$ is the uncompressed model's own temperature-refit ECE on the same test set; $\mathrm{CRR}=1$ means refit fully restores original calibration quality, $\mathrm{CRR}=0$ means it does nothing. We test the ``monotonic temperature'' hypothesis by regressing the optimal post-compression temperature on a scalar compression ratio, $\text{bits}/32 \times (1-\text{sparsity})$, and reporting $R^2$ of the linear fit; a strong fit would allow predicting the right temperature without any calibration data.
+
+\section{Experimental Setup}
+\label{sec:experimental_setup}
+\textbf{Pilot.} As a pipeline sanity check we first trained a single tiny MLP ($64\!\to\!64\!\to\!32\!\to\!10$, $<10$K params) on sklearn Digits (8$\times$8 grayscale, 10 classes), applying quantization and pruning separately (not jointly) across the same bit-width and sparsity levels.
+
+\textbf{Main study.} We trained tiny CNNs ($<$10K params: two conv layers, max-pooling, two FC layers) on MNIST and FashionMNIST (6000 examples subsampled from HuggingFace \texttt{mnist}/\texttt{fashion\_mnist}, 70/15/15 train/val/test split, 5 epochs, Adam), and a tiny MLP on the Adult Census Income tabular task (HuggingFace \texttt{scikit-learn/adult-census-income}, one-hot encoded and standardized features, same split, 12 epochs, Adam). All three baselines converge with small train/validation gaps (Appendix Fig.~\ref{fig:appendix_training}): final test accuracy is 90.2\% (MNIST), 78.9\% (FashionMNIST), and 94.1\% (Adult Income). For each dataset we then ran the full 24-point joint compression grid described in Section~\ref{sec:method}.
+
+\section{Experiments}
+\label{sec:experiments}
+
+\textbf{Quantization and pruning each induce calibration drift, but not identically across datasets.} Figure~\ref{fig:quant} shows ECE as a function of bit-width at zero sparsity, and Figure~\ref{fig:prune} shows ECE as a function of sparsity at full precision. In both slices, ECE before refit rises as compression becomes more aggressive (lower bit-width, higher sparsity), and temperature refit pulls the curves back down toward the horizontal dashed line marking the original model's own calibrated ECE. Encouragingly, in these single-axis slices refit looks nearly sufficient for MNIST and FashionMNIST at moderate compression; it is visibly less complete for Adult Income under aggressive pruning, foreshadowing the joint-grid results below.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig02_quantization_calibration_drift.png}
+\caption{ECE before and after temperature refit as a function of quantization bit-width (pruning sparsity fixed at 0), for MNIST, FashionMNIST, and Adult Income. The dashed line marks the original (uncompressed) model's own calibrated ECE.}
+\label{fig:quant}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig03_pruning_calibration_drift.png}
+\caption{ECE before and after temperature refit as a function of pruning sparsity (bit-width fixed at 32), for the same three datasets.}
+\label{fig:prune}
+\end{figure}
+
+\textbf{The joint grid reveals qualitatively different, non-monotonic failure modes per dataset.} Figure~\ref{fig:heatmap} shows pre-refit ECE across the full bit-width$\times$sparsity grid. MNIST's worst calibration ($\mathrm{ECE}\approx0.24$) occurs at \emph{moderate} joint compression (around 4-bit, 70\% sparsity), with better calibration at both the mild-compression and extreme-sparsity ends -- a U-shaped, non-monotonic pattern that directly contradicts a simple ``more compression $\to$ more overconfidence'' story. Adult Income shows the opposite structure: calibration is worst at extreme sparsity (90--95\%) essentially independent of bit-width ($\mathrm{ECE}\approx0.3$--$0.4$), indicating that for this tabular model pruning, not quantization, is the dominant driver of miscalibration. These divergent patterns mean a single scalar compression-severity story does not transfer across architectures/modalities.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig05_ece_heatmap_before_refit.png}
+\caption{Test ECE before temperature refit across the full quantization bit-width $\times$ pruning sparsity grid, for each dataset. Vision models peak at moderate joint compression; the tabular model is dominated by pruning sparsity.}
+\label{fig:heatmap}
+\end{figure}
+
+\textbf{Temperature refit helps, but recovers only about half the damage on average, and its adequacy cannot be predicted from compression ratio alone.} Table~\ref{tab:summary} and Figure~\ref{fig:temp} summarize the grid-level results. Mean calibration recovery ratio across all 24 configurations is 0.451 (MNIST), 0.508 (FashionMNIST), and 0.525 (Adult Income) -- i.e., refit undoes roughly half, not nearly all, of the compression-induced ECE increase when averaged over the whole grid, even though it looks close to complete in the mild-compression 1-D slices of Figures~\ref{fig:quant}--\ref{fig:prune}. The optimal temperature is also far from a simple function of the compression ratio: linear regression of temperature on $\text{bits}/32\times(1-\text{sparsity})$ gives $R^2 = 0.078$, $0.078$, and $0.089$ for MNIST, FashionMNIST, and Adult Income respectively. Inspecting the scatter (Figure~\ref{fig:temp}, middle panel), a handful of low-bit configurations require very large temperatures (up to $T\approx7.8$) while most configurations cluster near $T\approx1$--$2$, so the relationship is dominated by outliers rather than a smooth trend -- the ``predict temperature without a calibration set'' recipe proposed in our hypothesis does not survive contact with the data.
+
+\begin{table}[h!]
+\centering
+\caption{Baseline performance and compression-grid summary per dataset. ECE before/after refers to the \emph{uncompressed} baseline model; mean CRR and temperature-vs-ratio $R^2$ are aggregated over the full 24-point compression grid.}
+\label{tab:summary}
+\begin{tabular}{lccccc}
+\toprule
+Dataset & Test Acc. & ECE before & ECE after & Mean CRR & Temp.-ratio $R^2$ \\
+\midrule
+MNIST & 0.902 & 0.0268 & 0.0264 & 0.451 & 0.078 \\
+FashionMNIST & 0.789 & 0.0420 & 0.0433 & 0.508 & 0.078 \\
+Adult Income & 0.941 & 0.0114 & 0.0149 & 0.525 & 0.089 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig04_temperature_compression_relationship.png}
+\caption{Left: mean calibration recovery ratio by dataset (1.0 = full recovery). Middle: optimal post-compression temperature vs.\ scalar compression ratio, colored by dataset. Right: $R^2$ of a linear temperature-vs-ratio fit, per dataset -- uniformly low.}
+\label{fig:temp}
+\end{figure}
+
+\textbf{The pilot study looked cleaner than the full study.} On sklearn Digits (Appendix Figs.~\ref{fig:appendix_digits_pipeline}--\ref{fig:appendix_digits_compression}), varying quantization and pruning \emph{separately} (not jointly) gave a much more monotonic-looking picture: pruning ECE rose steadily from $\sim$0.02 at 30\% sparsity to $\sim$0.23 at 90\%, and quantization ECE rose steadily as bit-width dropped, with refit tracking these trends closely and nearly recovering the baseline in most cases. That cleaner story did not survive scaling up to three datasets and a jointly-varying grid; we flag this explicitly since it illustrates how a narrow pilot can be misleadingly encouraging about both the shape of compression-induced drift and the completeness of the temperature-refit fix. Accuracy after compression and refit tracked accuracy before refit closely in all cases (refit does not change argmax predictions), confirming that the calibration cost we measure is genuinely decoupled from the accuracy cost of compression, even though it is not as cheaply reversible as hoped.
+
+\section{Conclusion}
+\label{sec:conclusion}
+Compressing tiny networks does shift confidence calibration, but not in the simple, monotonic, overconfidence-with-compression-ratio way we hypothesized: the direction and severity of drift depend on architecture and modality (vision models peak at moderate joint compression; a tabular MLP is dominated by pruning sparsity specifically), and a single post-hoc temperature refit -- while a sensible, nearly free default -- recovers only about half of the induced miscalibration on average across a realistic compression grid, not the near-complete fix suggested by a narrower pilot study. The scalar-compression-ratio-to-temperature relationship we hoped would enable calibration-set-free deployment does not hold ($R^2\approx0.08$--$0.09$). Practically, this means temperature refit after compression is worth doing almost for free, but practitioners should still budget for a small held-out calibration split and should not assume any fixed compression level is calibration-safe without checking. Future work should test whether class-conditional or subgroup calibration corrections close the remaining gap the single global temperature misses, and whether structured (rather than unstructured) pruning or per-channel quantization -- which better match production kernels -- produce cleaner or messier drift than the unstructured, per-tensor operations studied here.
+
+\bibliography{iclr2025}
+\bibliographystyle{iclr2025}
+
+\appendix
+
+\section*{\LARGE Supplementary Material}
+\label{sec:appendix}
+
+\section{Additional Results}
+
+Figure~\ref{fig:appendix_training} shows training dynamics for the three main-study baselines, confirming stable convergence with small train/validation gaps before any compression is applied. Figure~\ref{fig:appendix_reliability} shows reliability diagrams and Figure~\ref{fig:appendix_confusion} shows confusion matrices for the same uncompressed baselines. Figure~\ref{fig:appendix_heatmap_after} shows the joint-grid ECE heatmap \emph{after} temperature refit, complementing Figure~\ref{fig:heatmap} in the main text; the residual elevated regions (especially high-sparsity Adult Income) are the direct visual counterpart of the incomplete recovery ratios reported in Table~\ref{tab:summary}. Figure~\ref{fig:appendix_scatter} shows ECE vs.\ compression ratio (before and after refit) pooled across the full grid, plus the distribution of calibration recovery ratio per dataset. Figures~\ref{fig:appendix_digits_pipeline}--\ref{fig:appendix_digits_compression} document the preliminary sklearn Digits pipeline validation referenced in Section~\ref{sec:experiments}.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig01_training_accuracy_curves.png}
+\caption{Baseline training/validation accuracy dynamics for MNIST, FashionMNIST, and Adult Income before any compression.}
+\label{fig:appendix_training}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig06_ece_heatmap_after_refit.png}
+\caption{Test ECE after temperature refit across the joint quantization $\times$ pruning grid, for each dataset (compare to Figure~\ref{fig:heatmap}).}
+\label{fig:appendix_heatmap_after}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig07_reliability_diagrams_original.png}
+\caption{Reliability diagrams for the uncompressed baseline models (original temperature).}
+\label{fig:appendix_reliability}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig09_appendix_confusion_matrices.png}
+\caption{Confusion matrices for the uncompressed baseline models.}
+\label{fig:appendix_confusion}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig08_ece_vs_compression_ratio.png}
+\caption{Left/middle: ECE before and after temperature refit vs.\ scalar compression ratio, pooled across all grid configurations and datasets. Right: distribution of calibration recovery ratio per dataset.}
+\label{fig:appendix_scatter}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig10_appendix_digits_baseline_validation.png}
+\caption{Preliminary pipeline validation on sklearn Digits: training loss/accuracy curves and baseline confusion matrix.}
+\label{fig:appendix_digits_pipeline}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=\textwidth]{fig11_appendix_digits_compression_ece.png}
+\caption{Preliminary pipeline: compression-induced ECE drift on Digits under separately-varied quantization and pruning, and the baseline reliability diagram.}
+\label{fig:appendix_digits_compression}
+\end{figure}
+
+\end{document}
