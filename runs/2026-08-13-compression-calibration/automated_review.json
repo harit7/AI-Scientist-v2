@@ -1,0 +1,42 @@
+{
+  "AI-Scientist-v2": {
+    "Summary": "The paper studies whether post-training quantization (2/4/8-bit) and unstructured magnitude pruning (30-95% sparsity), applied jointly, degrade the calibration (not just accuracy) of tiny neural networks, and whether a single post-hoc temperature refit can restore calibration. The authors run a 24-point joint quantization x pruning grid on tiny CNNs (MNIST, FashionMNIST) and a tiny MLP (Adult Census Income), preceded by a smaller single-axis pilot on sklearn Digits. They find that compression increases ECE non-monotonically and in a dataset/architecture-dependent way (vision models worst at moderate joint compression, tabular model worst at extreme pruning), that temperature refit recovers only ~45-53% of the induced miscalibration on average (not the near-complete recovery the pilot suggested), and that the optimal post-compression temperature cannot be predicted from a simple compression-ratio scalar (R^2 ~ 0.08-0.09). The paper is framed as a cautionary, controlled empirical study rather than a proposed fix.",
+    "Strengths": [
+      "Addresses a genuinely underexplored and practically relevant question: calibration reliability under compression, as distinct from accuracy, which matters for selective prediction / human-in-the-loop deployment on edge devices.",
+      "The joint quantization x pruning grid (rather than single-axis ablations) is a more rigorous design than typical compression studies, and reveals interaction effects that single-axis slices miss.",
+      "Commendable methodological honesty: the paper explicitly reports that its own pilot study looked cleaner/more monotonic than the full study, and treats this discrepancy as a finding in itself rather than hiding it. This kind of negative-result transparency is valuable and rare.",
+      "Clear operational definitions (ECE, Brier, temperature scaling, calibration recovery ratio) and a simple, reproducible-in-spirit protocol (no fine-tuning, single temperature scalar, described splits)."
+    ],
+    "Weaknesses": [
+      "No evidence of repeated runs across random seeds (model init, calibration-split sampling, data splits). All headline claims -- the 'U-shaped' non-monotonic drift, the dataset-specific extreme-pruning effect, R^2 ~ 0.08 -- appear to come from a single run per grid cell, so it is impossible to tell whether the reported patterns are real phenomena or sampling noise, especially given small test/calibration sets (test splits on the order of a few hundred to ~2000 examples, calibration splits of 500-1000 examples) which make 15-bin ECE estimates inherently noisy.",
+      "Very small-scale study: three datasets, all with sub-10K-parameter models trained on subsampled data (6000 examples). This limits generalizability to realistically-sized production models where compression is actually deployed, though the authors do acknowledge this as future work.",
+      "The references section is empty and all in-text citations render as '?' or '??', making it impossible to verify claims about what prior work has or has not studied (e.g., the claim that 'no prior controlled small-scale study measures ECE as a joint function of quantization bit-width and pruning sparsity').",
+      "No statistical testing or confidence intervals accompany the CRR values, R^2 estimates, or ECE differences reported in Table 1, so claims like 'recovers only about half the damage' are presented as point estimates without any uncertainty quantification.",
+      "Only temperature scaling is evaluated as a correction method; no comparison to other lightweight post-hoc calibrators (e.g., isotonic regression, Platt scaling variants) that might behave differently under compression-induced miscalibration.",
+      "Figures in the submission are difficult to parse (garbled text/labels in several places), which may be an extraction artifact but as submitted hampers verification of the visual claims (e.g., the claimed U-shape in Figure 3)."
+    ],
+    "Originality": 3,
+    "Quality": 2,
+    "Clarity": 2,
+    "Significance": 2,
+    "Questions": [
+      "Were any of the reported grid results (ECE, CRR, temperature values, R^2) averaged over multiple random seeds or repeated calibration-split samples? If not, can the authors provide seed variance for at least the headline non-monotonic patterns (Figure 3) and the R^2 regression, to rule out noise as the explanation?",
+      "How large are the actual test and calibration sets in absolute numbers for MNIST/FashionMNIST/Adult Income, and how sensitive is the reported 15-bin ECE to bin count and sample size at these scales?",
+      "The references section appears empty in the submitted PDF -- is this a compilation error, and can the authors confirm the bibliography was intended to be included?",
+      "Given that the tabular model's worst calibration occurs at extreme pruning regardless of bit-width while vision models peak at moderate joint compression, do the authors have a mechanistic hypothesis (e.g., related to weight distribution or layer width) for why the two modalities diverge, beyond the empirical observation?",
+      "Did the authors try any correction beyond global temperature scaling (e.g., per-class or per-bin recalibration) to see whether the ~50% recovery ceiling is intrinsic to temperature scaling specifically or to compression-induced miscalibration generally?"
+    ],
+    "Limitations": [
+      "The paper acknowledges its main negative results but does not address the lack of seed variance/statistical uncertainty, which is a significant limitation for an empirical study whose main contributions are shape-of-curve claims (non-monotonicity, R^2 magnitude).",
+      "The paper appropriately flags that its models are 'tiny' and gestures at future work on structured pruning and per-channel quantization, but does not discuss how much the specific numeric findings (e.g., 45-53% recovery) might change at larger model/dataset scale.",
+      "No societal impact discussion, though given the applied/methodological nature of the work this is a minor omission."
+    ],
+    "Ethical Concerns": false,
+    "Soundness": 2,
+    "Presentation": 2,
+    "Contribution": 2,
+    "Overall": 3,
+    "Confidence": 3,
+    "Decision": "Reject"
+  }
+}
