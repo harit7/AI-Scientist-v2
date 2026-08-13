@@ -1,0 +1,6 @@
+% Compatibility shim: maps the obsolete subfigure interface onto subfig,
+% for TeX installations that no longer ship subfigure.sty.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{subfigure}[2026/08/12 v0.1 subfigure->subfig compatibility shim]
+\RequirePackage{subfig}
+\providecommand{\subfigure}[2][]{\subfloat[#1]{#2}}
